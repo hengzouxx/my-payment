@@ -53,12 +53,13 @@ export class OrderService {
 
     return {
       orderId: order.id,
+      amount: order.amount,
       status: order.status,
     };
   }
 
   async getOrder(orderId: string) {
-    const order = await this.findById(orderId);
+    const order = await this.findById(orderId, true);
     if (!order) {
       throw new NotFoundException('Order not found');
     }
@@ -74,22 +75,23 @@ export class OrderService {
   
   async addHistory(order: Order, status: OrderStatus) {
     const entry = this.historyRepo.create({
-      order,
+      orderId: order.id,
       status,
     });
     await this.historyRepo.save(entry);
   }
   
-  async findById(id: string) {
-    return this.orderRepo.findOne({
+  async findById(id: string, history: boolean = false) {
+    const order = await this.orderRepo.findOne({
       where: { id },
-      relations: ['history'],
+      relations: history ? ['history'] : undefined,
     });
+    return order;
   }
 
   async attachProviderId(order: Order, providerId: string) {
+    await this.orderRepo.update({ id: order.id }, { providerOrderId: providerId });
     order.providerOrderId = providerId;
-    await this.orderRepo.save(order);
   }
 
 }
