@@ -2,7 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import type { Job } from 'bull';
 import { OrderService } from './order.service';
 import { MockProviderService } from '../provider/mock-provider.service';
-import { OrderStatus } from "./order-status";
+import { OrderStatus } from './order-status';
 import axios from 'axios';
 import { Order } from './order.entity';
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -18,14 +18,15 @@ export class OrdersProcessor {
     private readonly provider: MockProviderService,
     private readonly context: RequestContext,
     @Inject('ORDERS_FILE_LOGGER')
-    private readonly fileLogger,
+    private readonly fileLogger: {
+      info: (data: Record<string, unknown>) => void;
+    },
   ) {}
 
   @Process('submit')
   async handleSubmit(job: Job<{ orderId: string; correlationId: string }>) {
-
     const { orderId, correlationId } = job.data;
-  
+
     return this.context.run(correlationId, async () => {
       await this.processOrder(job);
     });
@@ -67,18 +68,25 @@ export class OrdersProcessor {
         orderId,
         attempt,
       });
-      
-      await this.orderService.attachProviderId(order, submitResponse?.data?.providerOrderId);
+
+      await this.orderService.attachProviderId(
+        order,
+        submitResponse?.data?.providerOrderId,
+      );
 
       await this.orderService.updateStatus(order, submitResponse?.data?.status);
 
-      await this.pollProviderStatus(order, submitResponse?.data?.providerOrderId, correlationId);
+      await this.pollProviderStatus(
+        order,
+        submitResponse?.data?.providerOrderId,
+        correlationId,
+      );
     } catch (error) {
       this.fileLogger.info({
         message: 'submit_to_provider_result',
         correlationId,
         duration: Date.now() - submitStartTime,
-        error: error?.message || "unknown",
+        error: error?.message || 'unknown',
         orderId,
         attempt,
       });
@@ -89,17 +97,17 @@ export class OrdersProcessor {
   private async pollProviderStatus(
     order: Order,
     providerOrderId: string,
-    correlationId: string | null
+    correlationId: string | null,
   ) {
     for (let i = 0; i < 10; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       const submitStartTime = Date.now();
       try {
         const statusResponse = await axios.get(
-            `http://localhost:3000/provider-simulator/status/${providerOrderId}`,
-            { timeout: 3000 },
-          );
-        
+          `http://localhost:3000/provider-simulator/status/${providerOrderId}`,
+          { timeout: 3000 },
+        );
+
         const status = statusResponse.data.status;
 
         this.fileLogger.info({
@@ -109,11 +117,11 @@ export class OrdersProcessor {
           provider_order_id: providerOrderId,
           provider_order_status: status,
           orderId: order.id,
-          attempt: i+1,
+          attempt: i + 1,
         });
-  
+
         if (status === 'PENDING') continue;
-  
+
         await this.orderService.updateStatus(order, status);
         return;
       } catch (err) {
@@ -124,13 +132,13 @@ export class OrdersProcessor {
           duration: Date.now() - submitStartTime,
           provider_order_id: providerOrderId,
           orderId: order.id,
-          attempt: i+1,
+          attempt: i + 1,
         });
         // ignore intermittent 500 errors
         continue;
       }
     }
-  
+
     // If never resolved
     await this.orderService.updateStatus(order, OrderStatus.FAILED);
   }

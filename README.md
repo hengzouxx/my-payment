@@ -1,98 +1,102 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# My Payment Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## Running Locally
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+This project is a NestJS-based payment/order processing service with async provider simulation and logging.
 
-## Description
+### Prerequisites
+- [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/)
+- Node.js (v18+) and npm (for local development without Docker)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+### Quick Start (Recommended)
 
-## Project setup
+1. **Clone the repository**
+2. **Start all services:**
+	```sh
+	docker-compose up --build
+	```
+	This will start:
+	- The NestJS app (on port 3000)
+	- PostgreSQL (on port 5432)
+	- Redis (on port 6379)
 
-```bash
-$ npm install
-```
+3. **Access the API:**
+	- The app runs at [http://localhost:3000](http://localhost:3000)
 
-## Compile and run the project
+### Manual Start (Without Docker)
 
-```bash
-# development
-$ npm run start
+1. Start PostgreSQL and Redis locally (see `docker-compose.yml` for env vars).
+2. Install dependencies:
+	```sh
+	npm install
+	```
+3. Run database migrations (if needed):
+	```sh
+	npm run migration:run
+	```
+4. Start the app:
+	```sh
+	npm run start:dev
+	```
 
-# watch mode
-$ npm run start:dev
+Logs are written to `logs/app.log` and the console.
 
-# production mode
-$ npm run start:prod
-```
+---
 
-## Run tests
+## Async Worker & Queue
 
-```bash
-# unit tests
-$ npm run test
+Order processing is handled asynchronously using a [Bull](https://github.com/OptimalBits/bull) queue backed by Redis. When an order is created, it is enqueued for background processing. The worker (in the same NestJS app) picks up jobs from the queue and:
 
-# e2e tests
-$ npm run test:e2e
+- Submits the order to a simulated provider
+- Polls the provider for status updates
+- Handles retries and failures automatically (configurable attempts and backoff)
 
-# test coverage
-$ npm run test:cov
-```
+**Worker is not a separate process**: The async worker runs within the same NestJS application instance. If you want to scale workers separately, you can run multiple instances of the app (e.g., with Docker Compose or Kubernetes).
 
-## Deployment
+**Logs**: All processing steps and state transitions are logged to both the console and `logs/app.log`.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+---
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Simulating Provider Failures & Timeouts
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+The provider is simulated by the `/provider-simulator` endpoints. Failures and timeouts are triggered randomly to test the system's resilience:
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- **Random Failures:**
+	- Each provider call (submit/status) has a 50% chance to throw a 500 error (see `simulateRandomFailure()` in the provider simulator service).
+- **Random Delays/Timeouts:**
+	- Each call has a 60% chance to be delayed by 2–5 seconds (see `simulateRandomDelay()`).
+	- The worker polls the provider with a 3s timeout and retries up to 10 times.
+- **Order Status:**
+	- Orders may remain `PENDING` for a few seconds, then resolve to either `COMPLETED` or `FAILED` (randomized).
 
-## Resources
+You can observe these behaviors by creating orders and watching logs for retries, failures, and status transitions.
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Design Trade-offs
 
-## Support
+### Bull Queue (Redis) vs. SQS
+- **Bull (Redis):**
+	- Simple to set up for local/dev environments
+	- Fast, in-memory, but not as durable as cloud queues
+	- Good for small/medium projects or prototyping
+- **Amazon SQS:**
+	- Fully managed, highly durable, scalable
+	- Better for production, multi-region, or high-availability needs
+	- More operational complexity and cost
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Outbox Pattern
+- Ensures reliable event delivery by writing events to a DB table (outbox) as part of the same transaction as business data.
+- A separate process reads the outbox and publishes to the queue/bus.
+- **This project does not implement the outbox pattern** (but it is recommended for mission-critical systems to avoid message loss).
 
-## Stay in touch
+### Logging: File vs. NoSQL
+- **File Logging:**
+	- Simple, easy to inspect locally (`logs/app.log`)
+	- Not scalable for distributed/multi-instance setups
+- **NoSQL Logging (e.g., MongoDB, Elasticsearch):**
+	- Centralized, queryable, scalable
+	- Better for production, monitoring, and analytics
+	- Requires extra infrastructure
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+**This project logs to both file and console for simplicity.**

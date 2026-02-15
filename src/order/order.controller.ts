@@ -6,7 +6,10 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  async create(@Headers('idempotency-key') idempotencyKey: string, @Body('amount') amount: number) {
+  async create(
+    @Headers('idempotency-key') idempotencyKey: string,
+    @Body('amount') amount: number,
+  ) {
     return this.orderService.createOrder(idempotencyKey, amount);
   }
 

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from './order.entity';
@@ -19,11 +19,13 @@ export class OrderService {
 
     @InjectQueue('orders')
     private ordersQueue: Queue,
-    
+
     private readonly context: RequestContext,
 
     @Inject('ORDERS_FILE_LOGGER')
-    private readonly fileLogger,
+    private readonly fileLogger: {
+      info: (data: Record<string, unknown>) => void;
+    },
   ) {}
 
   async createOrder(idempotencyKey: string, amount: number) {
@@ -57,11 +59,12 @@ export class OrderService {
       message: 'order_state_created',
       correlationId,
       orderId: order.id,
-      status: order.status
+      status: order.status,
     });
 
     // Enqueue async submission
-    await this.ordersQueue.add('submit',
+    await this.ordersQueue.add(
+      'submit',
       { orderId: order.id, correlationId },
       {
         attempts: 5,
@@ -88,7 +91,7 @@ export class OrderService {
   }
 
   async updateStatus(order: Order, status: OrderStatus) {
-    const from  = order.status;
+    const from = order.status;
     order.status = status;
     await this.orderRepo.save(order);
     const to = order.status;
@@ -103,7 +106,7 @@ export class OrderService {
       to,
     });
   }
-  
+
   async addHistory(order: Order, status: OrderStatus) {
     const entry = this.historyRepo.create({
       orderId: order.id,
@@ -111,7 +114,7 @@ export class OrderService {
     });
     await this.historyRepo.save(entry);
   }
-  
+
   async findById(id: string, history: boolean = false) {
     const order = await this.orderRepo.findOne({
       where: { id },
@@ -121,8 +124,10 @@ export class OrderService {
   }
 
   async attachProviderId(order: Order, providerId: string) {
-    await this.orderRepo.update({ id: order.id }, { providerOrderId: providerId });
+    await this.orderRepo.update(
+      { id: order.id },
+      { providerOrderId: providerId },
+    );
     order.providerOrderId = providerId;
   }
-
 }
