@@ -3,6 +3,8 @@ import type { Job } from 'bull';
 import { OrderService } from './order.service';
 import { MockProviderService } from '../provider/mock-provider.service';
 import { OrderStatus } from "./order-status";
+import axios from 'axios';
+import { Order } from './order.entity';
 
 @Processor('orders')
 export class OrdersProcessor {
@@ -13,6 +15,8 @@ export class OrdersProcessor {
 
   @Process('submit')
   async handleSubmit(job: Job<{ orderId: string }>) {
+    const provider_url = "http://localhost:3000";
+
     const order = await this.orderService.findById(job.data.orderId);
     if (!order) return;
 
@@ -21,19 +25,50 @@ export class OrdersProcessor {
 
     await this.orderService.updateStatus(order, OrderStatus.SUBMITTED);
 
-    const providerId = await this.provider.submit(order.id);
+    try {
+      const submitResponse = await axios.post(
+        'http://localhost:3000/provider-simulator/submit',
+        { orderId: order.id, amount: order.amount },
+        { timeout: 3000 },
+      );
+      console.log('order', submitResponse)
+      await this.orderService.attachProviderId(order, submitResponse?.data?.id);
 
-    await this.orderService.attachProviderId(order, providerId);
+      await this.orderService.updateStatus(order, submitResponse?.data?.status);
 
-    await this.orderService.updateStatus(order, OrderStatus.PENDING);
+      await this.pollProviderStatus(order, submitResponse?.data?.id);
+    } catch (error) {
+      console.log('e', error)
+      throw error; // let Bull retry
+    }
+  }
 
-    const result = await this.provider.waitForResult(providerId);
+  private async pollProviderStatus(
+    order: Order,
+    providerOrderId: string,
+  ) {
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+  
+      try {
+        const statusResponse = await axios.get(
+            `http://localhost:3000/provider-simulator/status/${providerOrderId}`,
+            { timeout: 3000 },
+          );
 
-    await this.orderService.updateStatus(
-      order,
-      result === 'success'
-        ? OrderStatus.COMPLETED
-        : OrderStatus.FAILED,
-    );
+        const status = statusResponse.data.status;
+  
+        if (status === 'PENDING') continue;
+  
+        await this.orderService.updateStatus(order, status);
+        return;
+      } catch (err) {
+        // ignore intermittent 500 errors
+        continue;
+      }
+    }
+  
+    // If never resolved
+    await this.orderService.updateStatus(order, OrderStatus.FAILED);
   }
 }

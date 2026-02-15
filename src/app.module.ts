@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { OrderModule } from './order/order.module';
+import { ProviderSimulatorModule } from './provider-simulator/provider-simulator.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { OrderModule } from './order/order.module';
       },
     }),
     OrderModule,
+    ProviderSimulatorModule,
   ],
   controllers: [AppController],
   providers: [AppService],
