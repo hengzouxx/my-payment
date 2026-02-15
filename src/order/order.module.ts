@@ -15,7 +15,11 @@ import { OrdersFileLogger } from './common/orders-logger.provider';
     TypeOrmModule.forFeature([Order, OrderHistory]),
     BullModule.registerQueue({ name: 'orders' }),
   ],
-  providers: [OrderService, OrdersProcessor, MockProviderService, RequestContext, 
+  providers: [
+    OrderService,
+    OrdersProcessor,
+    MockProviderService,
+    RequestContext,
     {
       provide: 'ORDERS_FILE_LOGGER',
       useValue: OrdersFileLogger,
