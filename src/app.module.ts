@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { OrderModule } from './order/order.module';
 import { ProviderSimulatorModule } from './provider-simulator/provider-simulator.module';
+import { LoggerModule } from 'nestjs-pino';
 
 @Module({
   imports: [
@@ -26,6 +27,28 @@ import { ProviderSimulatorModule } from './provider-simulator/provider-simulator
     }),
     OrderModule,
     ProviderSimulatorModule,
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: 'info',
+        transport: {
+          targets: [
+            {
+              target: 'pino-pretty', // console
+              options: {
+                singleLine: true,
+              },
+            },
+            {
+              target: 'pino/file', // file output
+              options: {
+                destination: './logs/app.log',
+                mkdir: true,
+              },
+            },
+          ],
+        },
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

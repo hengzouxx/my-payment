@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from './order.entity';
@@ -6,6 +6,7 @@ import { OrderHistory } from './order-history.entity';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { OrderStatus } from './order-status';
+import { RequestContext } from './common/request-context.service';
 
 @Injectable()
 export class OrderService {
@@ -18,6 +19,11 @@ export class OrderService {
 
     @InjectQueue('orders')
     private ordersQueue: Queue,
+    
+    private readonly context: RequestContext,
+
+    @Inject('ORDERS_FILE_LOGGER')
+    private readonly fileLogger,
   ) {}
 
   async createOrder(idempotencyKey: string, amount: number) {
@@ -46,10 +52,25 @@ export class OrderService {
 
     await this.addHistory(order, OrderStatus.RECEIVED);
 
-    // Enqueue async submission
-    await this.ordersQueue.add('submit', {
+    const correlationId = this.context.getCorrelationId();
+    this.fileLogger.info({
+      message: 'order_state_created',
+      correlationId,
       orderId: order.id,
+      status: order.status
     });
+
+    // Enqueue async submission
+    await this.ordersQueue.add('submit',
+      { orderId: order.id, correlationId },
+      {
+        attempts: 5,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    );
 
     return {
       orderId: order.id,
@@ -67,10 +88,20 @@ export class OrderService {
   }
 
   async updateStatus(order: Order, status: OrderStatus) {
+    const from  = order.status;
     order.status = status;
     await this.orderRepo.save(order);
-  
+    const to = order.status;
     await this.addHistory(order, status);
+
+    const correlationId = this.context.getCorrelationId();
+    this.fileLogger.info({
+      message: 'order_state_transition',
+      correlationId,
+      orderId: order.id,
+      from,
+      to,
+    });
   }
   
   async addHistory(order: Order, status: OrderStatus) {

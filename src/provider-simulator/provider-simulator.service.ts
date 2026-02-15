@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { HttpException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { OrderStatus } from './provider-order-status';
 import { Repository } from 'typeorm';
@@ -56,7 +56,7 @@ export class ProviderSimulatorService {
     const elapsed = now - createdAt;
 
     // Stay pending for 5 seconds
-    if (elapsed < 5000) {
+    if (elapsed < 2000) {
       return { status: OrderStatus.PENDING };
     }
 
@@ -73,9 +73,7 @@ export class ProviderSimulatorService {
   // ---- Failure simulation ----
   private simulateRandomFailure() {
     if (Math.random() < 0.5) {
-      throw new InternalServerErrorException(
-        'Random provider failure',
-      );
+        throw new HttpException('Provider failed', 500);
     }
   }
 
